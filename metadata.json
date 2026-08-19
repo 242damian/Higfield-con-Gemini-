@@ -1,0 +1,6 @@
+{
+  "name": "HIGHFIELD",
+  "description": "An interactive autonomous pixel-art cosmic world featuring Highfield, an autonomous explorer.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
