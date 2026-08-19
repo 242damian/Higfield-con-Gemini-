@@ -350,7 +350,6 @@ export class BehaviorEngine {
       this.nextDecisionDelay = 4500 + Math.random() * 2000;
       this.triggerThought("El escáner detecta microcristales de sílice fundida.");
       memorySystem.unlockDiscovery({
-        id: 'mineral_quartz_regolith',
         name: 'Fragmento de Cuarzo Regolítico',
         category: 'mineral',
         description: 'Muestra analizada con escáner de alta frecuencia en el cráter oriental.',

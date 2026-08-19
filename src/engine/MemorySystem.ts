@@ -324,27 +324,6 @@ export class MemorySystem {
     return null;
   }
 
-  public unlockDiscovery(discovery: Omit<LunarDiscovery, 'discoveredAt'>): LunarDiscovery {
-    const existing = this.discoveries.find((d) => d.id === discovery.id);
-    if (existing) return existing;
-
-    const newDisc: LunarDiscovery = {
-      ...discovery,
-      discoveredAt: Date.now(),
-    };
-    this.discoveries.push(newDisc);
-    this.saveDiscoveries();
-
-    this.addJournalEntry({
-      title: `Descubrimiento: ${discovery.name}`,
-      content: discovery.description,
-      category: 'discovery',
-      mood: 'wondrous',
-    });
-
-    return newDisc;
-  }
-
   public getRelics(): LunarRelic[] {
     return this.relics;
   }
