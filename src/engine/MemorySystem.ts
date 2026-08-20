@@ -12,7 +12,7 @@ export interface JournalEntry {
   dateStr: string;
   title: string;
   content: string;
-  category: 'observation' | 'dialogue' | 'discovery' | 'astronomy' | 'earth_signal' | 'relic';
+  category: 'observation' | 'dialogue' | 'session_summary' | 'discovery' | 'astronomy' | 'earth_signal' | 'relic';
   mood: string;
 }
 
@@ -27,13 +27,15 @@ export interface LunarDiscovery {
 
 export interface VisitorProfile {
   userName: string;
+  userContext: string; // Contexto, profesión, estudios o situación
+  userLikes: string[]; // Gustos, pasatiempos, preferencias
+  userInterests: string[]; // Intereses cósmicos, científicos o temas favoritos
+  learnedFacts: string[];
+  favoriteTopic?: string;
   visitCount: number;
   firstVisit: number;
   lastVisit: number;
-  learnedFacts: string[];
-  userInterests: string[];
-  favoriteTopic?: string;
-  bondLevel: number; // 1 (Visitor) to 5 (Cosmic Brother)
+  bondLevel: number; // 1 (Visitante) a 5 (Hermano Cósmico)
   lastSharedMilestone?: string;
 }
 
@@ -146,17 +148,35 @@ export class MemorySystem {
   private loadVisitor(): VisitorProfile {
     try {
       const data = localStorage.getItem(STORAGE_KEY_VISITOR);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        return {
+          userName: parsed.userName || '',
+          userContext: parsed.userContext || '',
+          userLikes: Array.isArray(parsed.userLikes) ? parsed.userLikes : [],
+          userInterests: Array.isArray(parsed.userInterests) ? parsed.userInterests : [],
+          learnedFacts: Array.isArray(parsed.learnedFacts) ? parsed.learnedFacts : [],
+          favoriteTopic: parsed.favoriteTopic || '',
+          visitCount: typeof parsed.visitCount === 'number' ? parsed.visitCount : 0,
+          firstVisit: parsed.firstVisit || Date.now(),
+          lastVisit: parsed.lastVisit || Date.now(),
+          bondLevel: parsed.bondLevel || 1,
+          lastSharedMilestone: parsed.lastSharedMilestone || undefined,
+        };
+      }
     } catch {
       // Ignore
     }
     return {
       userName: '',
+      userContext: '',
+      userLikes: [],
+      userInterests: [],
+      learnedFacts: [],
+      favoriteTopic: '',
       visitCount: 0,
       firstVisit: Date.now(),
       lastVisit: Date.now(),
-      learnedFacts: [],
-      userInterests: [],
       bondLevel: 1,
     };
   }
@@ -249,14 +269,63 @@ export class MemorySystem {
     }
   }
 
+  public updateProfile(updates: Partial<VisitorProfile>) {
+    this.visitor = {
+      ...this.visitor,
+      ...updates,
+    };
+    this.saveVisitor();
+  }
+
   public setUserName(name: string) {
     this.visitor.userName = name.trim();
     this.saveVisitor();
   }
 
+  public setUserContext(context: string) {
+    this.visitor.userContext = context.trim();
+    this.saveVisitor();
+  }
+
+  public setUserLikes(likes: string[]) {
+    this.visitor.userLikes = Array.from(new Set(likes.map((l) => l.trim()).filter(Boolean)));
+    this.saveVisitor();
+  }
+
+  public addUserLike(like: string) {
+    const trimmed = like.trim();
+    if (trimmed && !this.visitor.userLikes.includes(trimmed)) {
+      this.visitor.userLikes.push(trimmed);
+      this.saveVisitor();
+    }
+  }
+
+  public removeUserLike(like: string) {
+    this.visitor.userLikes = this.visitor.userLikes.filter((l) => l !== like);
+    this.saveVisitor();
+  }
+
+  public setUserInterests(interests: string[]) {
+    this.visitor.userInterests = Array.from(new Set(interests.map((i) => i.trim()).filter(Boolean)));
+    this.saveVisitor();
+  }
+
   public addUserInterest(interest: string) {
-    if (!this.visitor.userInterests.includes(interest)) {
-      this.visitor.userInterests.push(interest);
+    const trimmed = interest.trim();
+    if (trimmed && !this.visitor.userInterests.includes(trimmed)) {
+      this.visitor.userInterests.push(trimmed);
+      this.saveVisitor();
+    }
+  }
+
+  public removeUserInterest(interest: string) {
+    this.visitor.userInterests = this.visitor.userInterests.filter((i) => i !== interest);
+    this.saveVisitor();
+  }
+
+  public removeLearnedFact(index: number) {
+    if (index >= 0 && index < this.visitor.learnedFacts.length) {
+      this.visitor.learnedFacts.splice(index, 1);
       this.saveVisitor();
     }
   }
@@ -266,7 +335,7 @@ export class MemorySystem {
   ): JournalEntry {
     const newEntry: JournalEntry = {
       ...entry,
-      id: 'entry_' + Date.now(),
+      id: 'entry_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       timestamp: Date.now(),
       dateStr: new Date().toLocaleDateString('es-ES', {
         month: 'short',
@@ -281,13 +350,27 @@ export class MemorySystem {
     return newEntry;
   }
 
+  public addSessionSummary(title: string, summary: string, mood: string = 'thoughtful'): JournalEntry {
+    return this.addJournalEntry({
+      title: title || `Resumen de Sesión Lunar // ${new Date().toLocaleDateString('es-ES')}`,
+      content: summary,
+      category: 'session_summary',
+      mood: mood,
+    });
+  }
+
+  public getRecentJournalSummaries(count: number = 3): JournalEntry[] {
+    return this.journal.slice(0, count);
+  }
+
   public learnFact(fact: string) {
-    if (!this.visitor.learnedFacts.includes(fact)) {
-      this.visitor.learnedFacts.push(fact);
+    const trimmed = fact.trim();
+    if (trimmed && !this.visitor.learnedFacts.includes(trimmed)) {
+      this.visitor.learnedFacts.push(trimmed);
       this.saveVisitor();
       this.addJournalEntry({
         title: 'Recuerdo del Amigo Terrestre',
-        content: `He registrado en mi memoria: ${fact}`,
+        content: `He registrado en mi memoria: ${trimmed}`,
         category: 'dialogue',
         mood: 'thoughtful',
       });
@@ -324,6 +407,27 @@ export class MemorySystem {
     return null;
   }
 
+  public unlockDiscovery(discovery: Omit<LunarDiscovery, 'discoveredAt'>): LunarDiscovery {
+    const existing = this.discoveries.find((d) => d.id === discovery.id);
+    if (existing) return existing;
+
+    const newDisc: LunarDiscovery = {
+      ...discovery,
+      discoveredAt: Date.now(),
+    };
+    this.discoveries.push(newDisc);
+    this.saveDiscoveries();
+
+    this.addJournalEntry({
+      title: `Descubrimiento: ${discovery.name}`,
+      content: discovery.description,
+      category: 'discovery',
+      mood: 'wondrous',
+    });
+
+    return newDisc;
+  }
+
   public getRelics(): LunarRelic[] {
     return this.relics;
   }
@@ -354,15 +458,29 @@ export class MemorySystem {
     if (profile.userName) {
       parts.push(`El nombre del usuario es ${profile.userName}.`);
     }
-    parts.push(`Nivel de vínculo y confianza cósmica: ${profile.bondLevel}/5 (ha visitado ${profile.visitCount} veces).`);
+    if (profile.userContext) {
+      parts.push(`Contexto/Estudios del usuario: ${profile.userContext}.`);
+    }
+    if (profile.userLikes.length > 0) {
+      parts.push(`Gustos y pasatiempos: ${profile.userLikes.join(', ')}.`);
+    }
+    if (profile.userInterests.length > 0) {
+      parts.push(`Intereses cósmicos: ${profile.userInterests.join(', ')}.`);
+    }
+    parts.push(`Nivel de vínculo y confianza: ${profile.bondLevel}/5 (ha visitado ${profile.visitCount} veces).`);
 
     if (profile.learnedFacts.length > 0) {
-      parts.push(`Cosas que sabes de él: ${profile.learnedFacts.slice(0, 4).join('; ')}.`);
+      parts.push(`Recuerdos específicos: ${profile.learnedFacts.slice(0, 5).join('; ')}.`);
     }
 
     const discoveredRelicsCount = this.relics.filter((r) => r.discovered).length;
     if (discoveredRelicsCount > 0) {
       parts.push(`Han desenterrado ${discoveredRelicsCount} reliquias juntos en la Luna.`);
+    }
+
+    const recentEntries = this.getRecentJournalSummaries(2);
+    if (recentEntries.length > 0) {
+      parts.push(`Últimas notas de la bitácora: ${recentEntries.map((e) => `[${e.title}: ${e.content.slice(0, 100)}]`).join(' ')}`);
     }
 
     return parts.join(' ');

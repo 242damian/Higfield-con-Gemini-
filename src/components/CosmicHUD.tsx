@@ -5,7 +5,7 @@
  * moon spin rotation, snapshot polaroid, and voice transceiver controls.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Volume2,
   VolumeX,
@@ -21,8 +21,16 @@ import {
   Zap,
   RotateCw,
   Film,
+  Radio,
+  Sliders,
+  Bell,
+  CloudSun,
+  Eye,
+  Palette,
 } from 'lucide-react';
 import { soundManager } from '../engine/AudioEngine';
+import { soundscapeEngine } from '../engine/AtmosphericSoundscapeEngine';
+import { reminderSystem } from '../engine/ReminderSystem';
 import { HighfieldStatus, HighfieldState } from '../types';
 
 interface CosmicHUDProps {
@@ -37,6 +45,9 @@ interface CosmicHUDProps {
   onCycleCinemaMode?: () => void;
   onOpenLog?: () => void;
   onOpenSnapshot?: () => void;
+  onOpenVisionScanner?: () => void;
+  onOpenSketchpad?: () => void;
+  onOpenRemindersAndWeather?: (tab?: 'reminders' | 'weather') => void;
   zoomLevel: number;
   setZoomLevel: React.Dispatch<React.SetStateAction<number>>;
   onOpenDialogue: () => void;
@@ -53,17 +64,47 @@ export const CosmicHUD: React.FC<CosmicHUDProps> = ({
   onCycleCinemaMode,
   onOpenLog,
   onOpenSnapshot,
+  onOpenVisionScanner,
+  onOpenSketchpad,
+  onOpenRemindersAndWeather,
   zoomLevel,
   setZoomLevel,
   onOpenDialogue,
 }) => {
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.getMuted());
   const [showInfoModal, setShowInfoModal] = useState<boolean>(false);
+  const [showSoundscapeModal, setShowSoundscapeModal] = useState<boolean>(false);
+  const [soundscapeSettings, setSoundscapeSettings] = useState(soundscapeEngine.getSettings());
+  const [activeRemindersCount, setActiveRemindersCount] = useState<number>(reminderSystem.getActiveCount());
+
+  useEffect(() => {
+    const unsub = reminderSystem.subscribe(() => {
+      setActiveRemindersCount(reminderSystem.getActiveCount());
+    });
+    return unsub;
+  }, []);
 
   const toggleSound = () => {
     soundManager.resume();
     const muted = soundManager.toggleMute();
     setIsMuted(muted);
+    setSoundscapeSettings(soundscapeEngine.getSettings());
+  };
+
+  const handleSoundscapeLayer = (layer: 'drone' | 'wind' | 'radio' | 'crystal', val: number) => {
+    soundManager.resume();
+    soundscapeEngine.setLayerVolume(layer, val);
+    setSoundscapeSettings(soundscapeEngine.getSettings());
+  };
+
+  const handleTestRadioBurst = () => {
+    soundManager.resume();
+    soundscapeEngine.playProceduralRadioBurst();
+  };
+
+  const handleTestCrystalPing = () => {
+    soundManager.resume();
+    soundscapeEngine.playProceduralCrystalPing();
   };
 
   const handleZoom = (delta: number) => {
@@ -88,6 +129,16 @@ export const CosmicHUD: React.FC<CosmicHUDProps> = ({
         return { label: 'VISITOR_ACQUIRED', color: 'text-[#ff4e00]' };
       case HighfieldState.INTERACTING:
         return { label: 'TRANSMISSION_ACTIVE', color: 'text-emerald-400' };
+      case HighfieldState.SCANNING_GROUND:
+        return { label: 'SCANNING_REGOLITH_SPECTRUM', color: 'text-cyan-400' };
+      case HighfieldState.ADJUSTING_SENSORS:
+        return { label: 'CALIBRATING_VISOR_OPTICS', color: 'text-amber-400' };
+      case HighfieldState.CONTEMPLATING_DEEP:
+        return { label: 'DEEP_COSMIC_CONTEMPLATION', color: 'text-blue-400' };
+      case HighfieldState.STRETCHING_BOOTS:
+        return { label: 'TESTING_SUSPENSION_BOOTS', color: 'text-emerald-400' };
+      case HighfieldState.CHECKING_WEB_SHOOTERS:
+        return { label: 'VERIFYING_WEB_DISPENSERS', color: 'text-cyan-300' };
       case HighfieldState.IDLE:
       default:
         return { label: 'STANDING_SILENT_WATCH', color: 'text-slate-300' };
@@ -252,6 +303,71 @@ export const CosmicHUD: React.FC<CosmicHUDProps> = ({
             </button>
           )}
 
+          {/* Recordatorios y Alarmas */}
+          {onOpenRemindersAndWeather && (
+            <button
+              id="open-reminders-btn"
+              onClick={() => onOpenRemindersAndWeather('reminders')}
+              title="Abrir Cronómetros y Recordatorios [Tecla T]"
+              className="flex items-center gap-1.5 bg-[#050508]/90 hover:bg-[#ff4e00]/20 text-white/90 hover:text-[#ff4e00] px-2.5 py-1.5 rounded border border-[#1a1a2e] hover:border-[#ff4e00]/50 text-xs transition-all shadow-sm cursor-pointer group"
+            >
+              <Bell className="w-3.5 h-3.5 text-[#ff4e00] group-hover:scale-110 transition-transform" />
+              <span className="hidden md:inline text-[10px] tracking-wider uppercase font-bold">
+                Alarmas
+              </span>
+              {activeRemindersCount > 0 && (
+                <span className="bg-[#ff4e00] text-white text-[9px] font-black px-1.5 py-0.2 rounded-full animate-pulse">
+                  {activeRemindersCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* Clima Terrestre & Lunar */}
+          {onOpenRemindersAndWeather && (
+            <button
+              id="open-weather-btn"
+              onClick={() => onOpenRemindersAndWeather('weather')}
+              title="Consultar Meteorología Terrestre & Telemetría Lunar [Tecla M]"
+              className="flex items-center gap-1.5 bg-[#050508]/90 hover:bg-cyan-950/60 text-cyan-300 px-2.5 py-1.5 rounded border border-cyan-500/40 hover:border-cyan-400 text-xs transition-all shadow-sm cursor-pointer group"
+            >
+              <CloudSun className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+              <span className="hidden md:inline text-[10px] tracking-wider uppercase font-bold">
+                Clima
+              </span>
+            </button>
+          )}
+
+          {/* Escáner Óptico / OJO de Highfield (Multimodal Vision) */}
+          {onOpenVisionScanner && (
+            <button
+              id="open-vision-scanner-btn"
+              onClick={onOpenVisionScanner}
+              title="Activar Sensor Óptico / Ojo de Highfield (Cámara, tareas y análisis visual) [Tecla O o V]"
+              className="flex items-center gap-1.5 bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 px-3 py-1.5 rounded border border-emerald-500/50 hover:border-emerald-400 text-xs transition-all shadow-[0_0_10px_rgba(16,185,129,0.25)] cursor-pointer group"
+            >
+              <Eye className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 group-hover:text-emerald-300 transition-transform" />
+              <span className="text-[10px] tracking-wider uppercase font-bold text-emerald-400">
+                Ojo
+              </span>
+            </button>
+          )}
+
+          {/* Taller de Bocetos Cósmicos (Multimodal Generative Art) */}
+          {onOpenSketchpad && (
+            <button
+              id="open-sketchpad-btn"
+              onClick={onOpenSketchpad}
+              title="Abrir Taller de Bocetos Cósmicos y Pizarra Lunar [Tecla B]"
+              className="flex items-center gap-1.5 bg-sky-950/60 hover:bg-sky-900/70 text-sky-300 px-3 py-1.5 rounded border border-sky-500/50 hover:border-sky-400 text-xs transition-all shadow-[0_0_10px_rgba(56,189,248,0.25)] cursor-pointer group"
+            >
+              <Palette className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 group-hover:text-sky-300 transition-transform" />
+              <span className="text-[10px] tracking-wider uppercase font-bold text-sky-400">
+                Boceto
+              </span>
+            </button>
+          )}
+
           {/* Voice & Dialogue Transceiver Button */}
           <button
             id="voice-dialogue-btn"
@@ -298,6 +414,16 @@ export const CosmicHUD: React.FC<CosmicHUDProps> = ({
             ) : (
               <Volume2 className="w-3.5 h-3.5 text-[#ff4e00]" />
             )}
+          </button>
+
+          {/* Soundscape Atmosphere Mixer Button */}
+          <button
+            id="soundscape-mixer-btn"
+            onClick={() => setShowSoundscapeModal(true)}
+            title="Calibrar Paisaje Sonoro Cósmico (Drones, Viento Solar, Radio y Cristales)"
+            className="bg-[#050508]/85 hover:bg-[#0f0f1c] text-cyan-300 hover:text-cyan-200 p-1.5 rounded border border-cyan-900/60 hover:border-cyan-400/50 text-xs transition-all shadow-sm cursor-pointer"
+          >
+            <Radio className="w-3.5 h-3.5 text-cyan-400" />
           </button>
 
           {/* Info Trigger */}
@@ -390,6 +516,132 @@ export const CosmicHUD: React.FC<CosmicHUDProps> = ({
                   • <strong>Mayor Espacio:</strong> Lienzo panorámico de 540px con libertad total de patrulla y puntos clave de observación.
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Atmospheric Soundscape Mixer Modal */}
+      {showSoundscapeModal && (
+        <div
+          id="soundscape-modal-backdrop"
+          className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-sm font-mono"
+          onClick={() => setShowSoundscapeModal(false)}
+        >
+          <div
+            id="soundscape-modal-content"
+            className="bg-[#080812] border-l-4 border-cyan-400 border-t border-r border-b border-cyan-900/60 max-w-lg w-full rounded p-6 text-[#e0e0e0] shadow-[0_0_40px_rgba(0,0,0,0.9)] space-y-4 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[#1a1a2e] pb-3">
+              <div className="flex items-center gap-2">
+                <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
+                <h3 className="text-xs font-bold text-white tracking-[0.2em] uppercase">
+                  ATMOSPHERIC SOUNDSCAPE SYNTHESIZER
+                </h3>
+              </div>
+              <button
+                id="close-soundscape-modal"
+                onClick={() => setShowSoundscapeModal(false)}
+                className="text-white/40 hover:text-cyan-400 text-xs px-2 py-1 bg-[#10101f] border border-[#1a1a2e] rounded cursor-pointer transition-colors"
+              >
+                [ESC] CLOSE
+              </button>
+            </div>
+
+            <p className="text-[11px] text-white/70 leading-relaxed">
+              Motor sonoro procedural en tiempo real mediante <strong>Web Audio API</strong>. Mezcla frecuencias sub-graves cósmicas, viento solar modulado, ráfagas de telemetría por radio y resonancias cristalinas lunares.
+            </p>
+
+            {/* Quick Testing Triggers */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleTestRadioBurst}
+                className="flex-1 py-1.5 px-2.5 rounded bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-300 text-[10px] font-bold tracking-wider uppercase cursor-pointer transition-all"
+              >
+                📡 Emitir Telemetría Radio
+              </button>
+              <button
+                onClick={handleTestCrystalPing}
+                className="flex-1 py-1.5 px-2.5 rounded bg-purple-950/60 hover:bg-purple-900/80 border border-purple-500/40 text-purple-300 text-[10px] font-bold tracking-wider uppercase cursor-pointer transition-all"
+              >
+                💎 Resonar Cristal Lunar
+              </button>
+            </div>
+
+            {/* Layer Volume Sliders */}
+            <div className="space-y-3 bg-[#05050a] p-3.5 border border-[#141424] rounded">
+              {/* Drone Layer */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] uppercase font-bold text-white/60">
+                  <span className="text-cyan-300">1. Drones Sub-Graves (A1 / 55Hz Binaural)</span>
+                  <span>{Math.round(soundscapeSettings.droneVolume * 1000)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.2"
+                  step="0.005"
+                  value={soundscapeSettings.droneVolume}
+                  onChange={(e) => handleSoundscapeLayer('drone', parseFloat(e.target.value))}
+                  className="w-full accent-cyan-400 cursor-pointer"
+                />
+              </div>
+
+              {/* Wind Layer */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] uppercase font-bold text-white/60">
+                  <span className="text-amber-300">2. Viento Solar (Ruido Rosa Modulado)</span>
+                  <span>{Math.round(soundscapeSettings.windVolume * 1000)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.15"
+                  step="0.005"
+                  value={soundscapeSettings.windVolume}
+                  onChange={(e) => handleSoundscapeLayer('wind', parseFloat(e.target.value))}
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
+              </div>
+
+              {/* Radio Layer */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] uppercase font-bold text-white/60">
+                  <span className="text-[#ff4e00]">3. Interferencias & Ráfagas de Radio</span>
+                  <span>{Math.round(soundscapeSettings.radioVolume * 1000)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.12"
+                  step="0.005"
+                  value={soundscapeSettings.radioVolume}
+                  onChange={(e) => handleSoundscapeLayer('radio', parseFloat(e.target.value))}
+                  className="w-full accent-[#ff4e00] cursor-pointer"
+                />
+              </div>
+
+              {/* Crystals Layer */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] uppercase font-bold text-white/60">
+                  <span className="text-purple-300">4. Resonancias de Cristales Celestes</span>
+                  <span>{Math.round(soundscapeSettings.crystalsVolume * 1000)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.15"
+                  step="0.005"
+                  value={soundscapeSettings.crystalsVolume}
+                  onChange={(e) => handleSoundscapeLayer('crystal', parseFloat(e.target.value))}
+                  className="w-full accent-purple-400 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="text-[9px] text-white/40 tracking-wider text-center">
+              TEMPORIZACIÓN PROCEDURAL POISSON • SIN BUCLES PREGRABADOS • 100% SINTETIZADO
             </div>
           </div>
         </div>

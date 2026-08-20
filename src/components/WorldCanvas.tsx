@@ -279,6 +279,7 @@ export const WorldCanvas: React.FC<WorldCanvasProps> = ({
     if (coords && behaviorRef.current) {
       visitorProbeRef.current = { x: coords.x, y: coords.y, active: true };
       behaviorRef.current.setVisitorPosition(coords);
+      behaviorRef.current.registerUserInteraction();
     }
   };
 
@@ -293,6 +294,8 @@ export const WorldCanvas: React.FC<WorldCanvasProps> = ({
     soundManager.resume();
     const coords = getVirtualCoords(e.clientX, e.clientY);
     if (!coords || !behaviorRef.current) return;
+
+    behaviorRef.current.registerUserInteraction();
 
     const status = behaviorRef.current.getStatus();
     const dx = coords.x - status.position.x;
@@ -314,6 +317,7 @@ export const WorldCanvas: React.FC<WorldCanvasProps> = ({
   // Keyboard shortcuts: [E] Talk, [P] Patrol, [J] Web Jump, [R] Rotate Moon, [W] Cosmic Web, [C] Cycle Cinema, [B] Logbook, [T] Ticker
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      behaviorRef.current?.registerUserInteraction();
       if (e.key === 'e' || e.key === 'E') {
         if (!isDialogueOpenRef.current && behaviorRef.current?.getStatus().nearVisitor) {
           soundManager.resume();

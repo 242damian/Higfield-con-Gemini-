@@ -1144,6 +1144,259 @@ export class PixelCanvasRenderer {
       return;
     }
 
+    // --- IDLE STATE: SCANNING GROUND (30s+ Inactivity) ---
+    if (status.state === HighfieldState.SCANNING_GROUND) {
+      const scanPhase = (this.animFrame % 60) / 60;
+      const scanSweepX = 8 + scanPhase * 26;
+
+      // Draw crouched body
+      ctx.fillStyle = '#10141f';
+      ctx.fillRect(-5, -5, 6, 4);
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(-6, -3, 8, 3);
+
+      ctx.fillStyle = '#10141f';
+      ctx.fillRect(4, -7, 6, 4);
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(3, -5, 8, 3);
+
+      ctx.fillStyle = '#c89d5f';
+      ctx.fillRect(-6, -12, 14, 6);
+
+      ctx.fillStyle = '#227242';
+      ctx.fillRect(-5, -22, 14, 11);
+
+      ctx.fillStyle = '#161922';
+      ctx.fillRect(2, -28, 11, 10);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(7, -25, 4, 4);
+
+      // Optical scanning cone & beam
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.85)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(9, -23);
+      ctx.lineTo(scanSweepX, 0);
+      ctx.stroke();
+
+      // Scanner area grid projection
+      ctx.fillStyle = 'rgba(0, 240, 255, 0.15)';
+      ctx.beginPath();
+      ctx.moveTo(9, -23);
+      ctx.lineTo(6, 0);
+      ctx.lineTo(34, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Ground scan particle sparks
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(scanSweepX - 1, -1, 3, 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(scanSweepX, -2, 1, 1);
+
+      ctx.restore();
+      return;
+    }
+
+    // --- IDLE STATE: ADJUSTING SENSORS (30s+ Inactivity) ---
+    if (status.state === HighfieldState.ADJUSTING_SENSORS) {
+      const pulse = Math.sin(this.animFrame * 0.15) * 0.5 + 0.5;
+
+      const drawSneaker = (offsetX: number, offsetY: number) => {
+        ctx.fillStyle = '#10141f';
+        ctx.fillRect(offsetX + 1, offsetY - 5, 4, 3);
+        ctx.fillStyle = '#dc2626';
+        ctx.fillRect(offsetX, offsetY - 3, 7, 3);
+        ctx.fillStyle = '#f1f5f9';
+        ctx.fillRect(offsetX - 1, offsetY - 1, 8, 2);
+      };
+
+      drawSneaker(-5, 0);
+      drawSneaker(2, 0);
+
+      ctx.fillStyle = '#1a202c';
+      ctx.fillRect(-4, -9, 3, 5);
+      ctx.fillRect(3, -9, 3, 5);
+
+      ctx.fillStyle = '#c89d5f';
+      ctx.fillRect(-6, -14, 13, 6);
+
+      ctx.fillStyle = '#227242';
+      ctx.fillRect(-7, -27, 14, 13);
+      ctx.fillStyle = '#17512e';
+      ctx.fillRect(-7, -27, 4, 13);
+
+      // Arm raised adjusting visor helmet
+      ctx.fillStyle = '#227242';
+      ctx.fillRect(3, -33, 4, 8);
+      ctx.fillStyle = '#10141f';
+      ctx.fillRect(4, -36, 4, 4);
+
+      ctx.fillStyle = '#161922';
+      ctx.fillRect(-5, -39, 12, 12);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(2, -36, 4, 6);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(1.5, -36.5, 5, 7);
+
+      // Holographic Sensor Diagnostic Reticle
+      ctx.strokeStyle = `rgba(56, 189, 248, ${0.5 + pulse * 0.4})`;
+      ctx.beginPath();
+      ctx.arc(8, -34, 5 + pulse * 2, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(11, -38, 2, 1);
+      ctx.fillRect(11, -35, 3, 1);
+
+      ctx.restore();
+      return;
+    }
+
+    // --- IDLE STATE: CONTEMPLATING DEEP (30s+ Inactivity) ---
+    if (status.state === HighfieldState.CONTEMPLATING_DEEP) {
+      const breatheOffset = Math.sin(this.breatheTimer * 0.7) * 0.9;
+
+      const drawSneaker = (offsetX: number, offsetY: number) => {
+        ctx.fillStyle = '#10141f';
+        ctx.fillRect(offsetX + 1, offsetY - 5, 4, 3);
+        ctx.fillStyle = '#dc2626';
+        ctx.fillRect(offsetX, offsetY - 3, 7, 3);
+        ctx.fillStyle = '#f1f5f9';
+        ctx.fillRect(offsetX - 1, offsetY - 1, 8, 2);
+      };
+
+      drawSneaker(-5, 0);
+      drawSneaker(2, 0);
+
+      ctx.fillStyle = '#1a202c';
+      ctx.fillRect(-4, -9, 3, 5);
+      ctx.fillRect(3, -9, 3, 5);
+
+      ctx.fillStyle = '#c89d5f';
+      ctx.fillRect(-6, -14, 13, 6);
+
+      // Hoodie with hands tucked in front pouch
+      ctx.fillStyle = '#227242';
+      ctx.fillRect(-7, -27 + breatheOffset, 14, 13);
+      ctx.fillStyle = '#1b5b35';
+      ctx.fillRect(-3, -21 + breatheOffset, 8, 5);
+
+      // Head tilted slightly toward Earth
+      ctx.fillStyle = '#161922';
+      ctx.fillRect(-5, -40 + breatheOffset, 12, 12);
+
+      // Glowing lens with Earth reflection
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(2, -37 + breatheOffset, 4, 6);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(3, -36 + breatheOffset, 2, 3);
+
+      // Gentle aura of contemplation
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+      ctx.beginPath();
+      ctx.arc(0, -26 + breatheOffset, 18, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+      return;
+    }
+
+    // --- IDLE STATE: STRETCHING BOOTS (30s+ Inactivity) ---
+    if (status.state === HighfieldState.STRETCHING_BOOTS) {
+      const stretchPhase = Math.sin(this.animFrame * 0.12);
+      const kneeDip = Math.max(0, stretchPhase * 3);
+
+      const drawSneaker = (offsetX: number, offsetY: number) => {
+        ctx.fillStyle = '#10141f';
+        ctx.fillRect(offsetX + 1, offsetY - 5, 4, 3);
+        ctx.fillStyle = '#dc2626';
+        ctx.fillRect(offsetX, offsetY - 3, 7, 3);
+        ctx.fillStyle = '#f1f5f9';
+        ctx.fillRect(offsetX - 1, offsetY - 1, 8, 2);
+      };
+
+      drawSneaker(-6, kneeDip > 1 ? -1 : 0);
+      drawSneaker(3, kneeDip > 1 ? -1 : 0);
+
+      ctx.fillStyle = '#1a202c';
+      ctx.fillRect(-5, -8 + kneeDip, 3, 5);
+      ctx.fillRect(4, -8 + kneeDip, 3, 5);
+
+      ctx.fillStyle = '#c89d5f';
+      ctx.fillRect(-6, -13 + kneeDip, 13, 6);
+
+      ctx.fillStyle = '#227242';
+      ctx.fillRect(-7, -26 + kneeDip, 14, 13);
+      ctx.fillStyle = '#161922';
+      ctx.fillRect(-5, -38 + kneeDip, 12, 12);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(2, -35 + kneeDip, 4, 6);
+
+      // Small dust puff particles under sneakers on suspension bounce
+      if (kneeDip < 0.5 && this.animFrame % 12 === 0) {
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
+        ctx.fillRect(-8, -2, 2, 2);
+        ctx.fillRect(8, -2, 2, 2);
+      }
+
+      ctx.restore();
+      return;
+    }
+
+    // --- IDLE STATE: CHECKING WEB SHOOTERS (30s+ Inactivity) ---
+    if (status.state === HighfieldState.CHECKING_WEB_SHOOTERS) {
+      const drawSneaker = (offsetX: number, offsetY: number) => {
+        ctx.fillStyle = '#10141f';
+        ctx.fillRect(offsetX + 1, offsetY - 5, 4, 3);
+        ctx.fillStyle = '#dc2626';
+        ctx.fillRect(offsetX, offsetY - 3, 7, 3);
+        ctx.fillStyle = '#f1f5f9';
+        ctx.fillRect(offsetX - 1, offsetY - 1, 8, 2);
+      };
+
+      drawSneaker(-5, 0);
+      drawSneaker(2, 0);
+
+      ctx.fillStyle = '#1a202c';
+      ctx.fillRect(-4, -9, 3, 5);
+      ctx.fillRect(3, -9, 3, 5);
+
+      ctx.fillStyle = '#c89d5f';
+      ctx.fillRect(-6, -14, 13, 6);
+
+      ctx.fillStyle = '#227242';
+      ctx.fillRect(-7, -27, 14, 13);
+
+      // Arm extended forward aiming wrist shooter
+      ctx.fillStyle = '#227242';
+      ctx.fillRect(5, -24, 9, 4);
+      ctx.fillStyle = '#10141f';
+      ctx.fillRect(14, -25, 3, 4);
+
+      ctx.fillStyle = '#161922';
+      ctx.fillRect(-5, -39, 12, 12);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(2, -36, 4, 6);
+
+      // Test filament string shooting out with sparkling tip
+      const threadLength = 20 + Math.sin(this.animFrame * 0.2) * 6;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(17, -23);
+      ctx.lineTo(17 + threadLength, -28);
+      ctx.stroke();
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(17 + threadLength - 1, -29, 3, 3);
+
+      ctx.restore();
+      return;
+    }
+
     // --- STANDARD STANDING & WALKING SPRITE ---
     const breatheOffset =
       status.state === HighfieldState.IDLE || status.state === HighfieldState.OBSERVING

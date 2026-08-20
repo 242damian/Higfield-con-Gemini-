@@ -7,27 +7,65 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Sparkles, Mic, MicOff, Volume2, VolumeX, Sliders, Play } from 'lucide-react';
+import {
+  Send,
+  Sparkles,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Sliders,
+  Play,
+  Eye,
+  Image as ImageIcon,
+  X,
+  Palette,
+  Globe,
+  Radio,
+  ExternalLink,
+  Battery,
+  Clock
+} from 'lucide-react';
 import { DIALOGUE_NODES } from '../ai/DialogueEngine';
-import { geminiBridge } from '../ai/GeminiBridge';
+import { geminiBridge, GroundingSource } from '../ai/GeminiBridge';
 import { soundManager } from '../engine/AudioEngine';
 import { voiceEngine, VoiceState, VoicePreset } from '../engine/VoiceEngine';
+import { environmentalSensors, DeviceTelemetry } from '../engine/EnvironmentalSensors';
 import { DialogueNode } from '../types';
+
+interface ExtendedDialogueNode extends DialogueNode {
+  groundingSources?: GroundingSource[];
+}
 
 interface DialogueBoxProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenVisionScanner?: () => void;
+  onOpenSketchpad?: () => void;
+  initialMessage?: string;
+  initialImageAttachment?: string;
 }
 
-export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => {
-  const [currentNode, setCurrentNode] = useState<DialogueNode>(DIALOGUE_NODES.start);
+export const DialogueBox: React.FC<DialogueBoxProps> = ({
+  isOpen,
+  onClose,
+  onOpenVisionScanner,
+  onOpenSketchpad,
+  initialMessage,
+  initialImageAttachment,
+}) => {
+  const [currentNode, setCurrentNode] = useState<ExtendedDialogueNode>(DIALOGUE_NODES.start);
   const [displayedText, setDisplayedText] = useState<string>('');
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [customInput, setCustomInput] = useState<string>('');
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [voiceStatusMsg, setVoiceStatusMsg] = useState<string>('');
   const [isVoiceOutputActive, setIsVoiceOutputActive] = useState<boolean>(true);
+  const [isHandsFreeActive, setIsHandsFreeActive] = useState<boolean>(voiceEngine.isHandsFreeMode());
+  const [isWebSearchActive, setIsWebSearchActive] = useState<boolean>(false);
+  const [telemetry, setTelemetry] = useState<DeviceTelemetry>(environmentalSensors.getTelemetry());
 
   // Voice Tuning Settings Modal
   const [showVoiceSettings, setShowVoiceSettings] = useState<boolean>(false);
@@ -38,6 +76,28 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
   const [currentPreset, setCurrentPreset] = useState<VoicePreset>(voiceEngine.getSettings().preset);
 
   const textIntervalRef = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Update telemetry on mount and interval
+  useEffect(() => {
+    setTelemetry(environmentalSensors.updateTelemetry());
+    const interval = setInterval(() => {
+      setTelemetry(environmentalSensors.getTelemetry());
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Sync initial message/attachment when provided
+  useEffect(() => {
+    if (isOpen) {
+      if (initialImageAttachment) {
+        setAttachedImage(initialImageAttachment);
+      }
+      if (initialMessage) {
+        setCustomInput(initialMessage);
+      }
+    }
+  }, [isOpen, initialMessage, initialImageAttachment]);
 
   // Setup Voice Engine listener
   useEffect(() => {
@@ -67,7 +127,7 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
     };
   }, []);
 
-  // Typewriter effect & speech synthesis
+  // Typewriter effect & speech synthesis with adaptive speed
   useEffect(() => {
     if (!isOpen) {
       voiceEngine.stopSpeaking();
@@ -85,13 +145,24 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
 
     // Speak the response aloud if voice output is active
     if (isVoiceOutputActive) {
-      voiceEngine.speak(fullText);
+      voiceEngine.speak(fullText, () => {
+        // Hands-Free loop: if active, start listening automatically after Highfield finishes speaking
+        if (voiceEngine.isHandsFreeMode() && isOpen) {
+          setTimeout(() => {
+            voiceEngine.startListening('es-ES');
+          }, 500);
+        }
+      });
     }
 
+    // Adaptive speed: faster step interval or multiple chars for longer texts
+    const intervalMs = fullText.length > 250 ? 12 : 18;
+    const stepSize = fullText.length > 350 ? 2 : 1;
+
     textIntervalRef.current = window.setInterval(() => {
-      index++;
+      index = Math.min(fullText.length, index + stepSize);
       setDisplayedText(fullText.substring(0, index));
-      if (index % 2 === 0) {
+      if (index % 4 === 0) {
         soundManager.playDialogueBlip(index % 4);
       }
 
@@ -99,41 +170,66 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
         setIsTyping(false);
         if (textIntervalRef.current) clearInterval(textIntervalRef.current);
       }
-    }, 20);
+    }, intervalMs);
 
     return () => {
       if (textIntervalRef.current) clearInterval(textIntervalRef.current);
     };
   }, [currentNode, isOpen, isVoiceOutputActive]);
 
+  const handleSkipTyping = () => {
+    if (isTyping && textIntervalRef.current) {
+      clearInterval(textIntervalRef.current);
+      setDisplayedText(currentNode.text);
+      setIsTyping(false);
+    }
+  };
+
+  const handleClose = () => {
+    voiceEngine.stopSpeaking();
+    voiceEngine.stopListening();
+    geminiBridge.summarizeCurrentSession().catch((e) => console.warn('Background summarization error:', e));
+    onClose();
+  };
+
   const handleSelectOption = (nextNodeId?: string) => {
     soundManager.playDialogueBlip(2);
     if (!nextNodeId) {
-      onClose();
+      handleClose();
       return;
     }
     const node = DIALOGUE_NODES[nextNodeId];
     if (node) {
       setCurrentNode(node);
     } else {
-      onClose();
+      handleClose();
     }
   };
 
   const triggerSendMessage = async (text: string) => {
-    if (!text.trim() || isAiLoading) return;
+    if ((!text.trim() && !attachedImage) || isAiLoading) return;
+    const effectiveText = text.trim() || 'He transmitido una captura visual a través del visor.';
+    const imageToSend = attachedImage;
+
     setCustomInput('');
+    setAttachedImage(null);
     setIsAiLoading(true);
     soundManager.playInteractChime();
 
-    // Query GeminiBridge
-    const response = await geminiBridge.generateReply(text, [{ role: 'user', text }]);
+    // Query GeminiBridge with Google Search Grounding, environmental telemetry, and optional image
+    const response = await geminiBridge.generateReply(
+      effectiveText,
+      undefined,
+      imageToSend || undefined,
+      isWebSearchActive
+    );
 
     setIsAiLoading(false);
     setCurrentNode({
       id: 'custom_reply_' + Date.now(),
       text: response.reply,
       characterMood: response.mood,
+      groundingSources: response.groundingSources,
       options: [
         { text: 'Preguntar algo más', nextNodeId: 'start' },
         { text: 'Volver a contemplar el horizonte', nextNodeId: undefined },
@@ -146,6 +242,19 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
     triggerSendMessage(customInput);
   };
 
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setAttachedImage(event.target.result as string);
+        soundManager.playInteractChime();
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const toggleMicListening = () => {
     soundManager.resume();
     if (voiceState === 'listening') {
@@ -155,6 +264,16 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
       if (started) {
         soundManager.playInteractChime();
       }
+    }
+  };
+
+  const toggleHandsFree = () => {
+    const next = !isHandsFreeActive;
+    setIsHandsFreeActive(next);
+    voiceEngine.setHandsFreeMode(next);
+    soundManager.playInteractChime();
+    if (next && voiceState === 'idle') {
+      voiceEngine.startListening('es-ES');
     }
   };
 
@@ -185,7 +304,7 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 30 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="fixed bottom-6 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[720px] max-w-full z-50 pointer-events-auto font-mono"
+          className="fixed bottom-6 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[760px] max-w-full z-50 pointer-events-auto font-mono"
         >
           <div className="relative bg-[#050508]/95 border-l-4 border-[#ff4e00] border-t border-r border-b border-[#1a1a2e] rounded-xs shadow-[0_0_35px_rgba(0,0,0,0.9)] backdrop-blur-md overflow-hidden text-[#e0e0e0]">
             {/* Top Transmission Header */}
@@ -198,8 +317,33 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
                 <span className="text-[9px] px-2 py-0.5 rounded-xs border border-white/10 bg-white/5 text-white/50 tracking-widest">
                   MOOD: {currentNode.characterMood.toUpperCase()}
                 </span>
+                {/* Environmental telemetry indicator */}
+                <span className="text-[9px] px-2 py-0.5 rounded-xs border border-sky-500/20 bg-sky-500/10 text-sky-300 flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  <span>{telemetry.localTime} ({telemetry.dayPeriod})</span>
+                  {telemetry.batteryLevel !== undefined && (
+                    <span className="flex items-center gap-0.5 ml-1 border-l border-sky-500/30 pl-1">
+                      <Battery className="w-2.5 h-2.5" />
+                      {telemetry.batteryLevel}%
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="flex items-center gap-2">
+                {/* Hands-Free Mode Toggle */}
+                <button
+                  onClick={toggleHandsFree}
+                  title={isHandsFreeActive ? 'Desactivar modo Manos Libres' : 'Activar modo Manos Libres (conversación continua)'}
+                  className={`p-1 rounded transition-colors cursor-pointer flex items-center gap-1 text-[10px] px-2 border ${
+                    isHandsFreeActive
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-[0_0_8px_rgba(245,158,11,0.3)]'
+                      : 'text-white/50 hover:text-white border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <Radio className={`w-3.5 h-3.5 ${isHandsFreeActive ? 'animate-pulse text-amber-400' : ''}`} />
+                  <span className="hidden sm:inline">Manos Libres</span>
+                </button>
+
                 {/* Voice Tuning Config Button */}
                 <button
                   id="voice-settings-btn"
@@ -226,7 +370,7 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
 
                 <button
                   id="close-dialogue-btn"
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="text-white/40 hover:text-[#ff4e00] text-[10px] tracking-wider uppercase px-2 py-0.5 rounded transition-colors cursor-pointer"
                   title="Cerrar diálogo"
                 >
@@ -380,16 +524,46 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
               {/* Text & Responses */}
               <div className="flex-1 w-full space-y-4">
                 {/* Speech Bubble */}
-                <div className="min-h-[50px] text-sm sm:text-base leading-relaxed text-white font-medium italic">
+                <div
+                  onClick={handleSkipTyping}
+                  title={isTyping ? "Haz clic para mostrar todo el texto de inmediato" : undefined}
+                  className={`min-h-[50px] max-h-56 sm:max-h-72 overflow-y-auto pr-2 text-sm sm:text-base leading-relaxed text-white font-medium italic select-text scrollbar-thin scrollbar-thumb-[#ff4e00]/40 scrollbar-track-black/30 ${
+                    isTyping ? 'cursor-pointer' : ''
+                  }`}
+                >
                   &ldquo;{displayedText}&rdquo;
-                  {isTyping && <span className="inline-block w-2 h-4 bg-[#ff4e00] ml-1 animate-ping" />}
+                  {isTyping && <span className="inline-block w-2 h-4 bg-[#ff4e00] ml-1 animate-ping align-middle" />}
                   {isAiLoading && (
                     <div className="flex items-center gap-2 text-xs text-[#ff4e00] mt-2 not-italic">
                       <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                      <span>Procesando respuesta cognitiva...</span>
+                      <span>Procesando respuesta cognitiva y analizando transmisión...</span>
                     </div>
                   )}
                 </div>
+
+                {/* Grounding Web Sources Citations */}
+                {currentNode.groundingSources && currentNode.groundingSources.length > 0 && !isTyping && (
+                  <div className="p-2.5 rounded bg-sky-950/30 border border-sky-500/20 space-y-1.5 not-italic">
+                    <div className="flex items-center gap-1.5 text-[10px] text-sky-400 font-bold uppercase tracking-wider">
+                      <Globe className="w-3 h-3 text-sky-400" />
+                      <span>Fuentes y Radar Web Terrestre</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {currentNode.groundingSources.map((source, sIdx) => (
+                        <a
+                          key={sIdx}
+                          href={source.uri}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-900/90 hover:bg-slate-800 border border-sky-500/30 text-[10px] text-sky-200 hover:text-white transition-colors"
+                        >
+                          <span className="truncate max-w-[200px]">{source.title}</span>
+                          <ExternalLink className="w-2.5 h-2.5 shrink-0 opacity-70" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Branching Dialogue Options */}
                 {!isTyping && currentNode.options && currentNode.options.length > 0 && (
@@ -416,13 +590,47 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
                   </div>
                 )}
 
+                {/* Attached Image Preview Chip */}
+                {attachedImage && (
+                  <div className="flex items-center gap-2 bg-emerald-950/40 border border-emerald-500/30 p-1.5 rounded text-xs not-italic">
+                    <img
+                      src={attachedImage}
+                      alt="Transmisión adjunta"
+                      className="w-10 h-10 object-cover rounded border border-emerald-500/40"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[11px] font-semibold text-emerald-300 block truncate">
+                        Imagen lista para análisis de Highfield
+                      </span>
+                      <span className="text-[9px] text-slate-400">Transmisión óptica vinculada</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAttachedImage(null)}
+                      className="p-1 hover:bg-slate-800 text-slate-400 hover:text-red-400 rounded transition-colors"
+                      title="Eliminar imagen adjunta"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Custom Message & Voice Form */}
-                <form onSubmit={handleSendCustomMessage} className="pt-2 border-t border-[#141424] flex items-center gap-2 not-italic">
+                <form onSubmit={handleSendCustomMessage} className="pt-2 border-t border-[#141424] flex items-center gap-2 not-italic flex-wrap sm:flex-nowrap">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageFileChange}
+                    className="hidden"
+                  />
+
+                  {/* Micro Button */}
                   <button
                     type="button"
                     onClick={toggleMicListening}
                     title={voiceState === 'listening' ? 'Detener micrófono' : 'Hablar con Highfield por micrófono'}
-                    className={`px-3 py-2 rounded-xs text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                    className={`px-2.5 sm:px-3 py-2 rounded-xs text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
                       voiceState === 'listening'
                         ? 'bg-[#ff4e00] text-white border-[#ff4e00] animate-pulse shadow-[0_0_12px_#ff4e00]'
                         : 'bg-[#0a0a14] hover:bg-[#151528] text-white/80 hover:text-[#ff4e00] border-[#1a1a2e]'
@@ -432,18 +640,77 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
                     <span className="hidden sm:inline">{voiceState === 'listening' ? 'Grabando...' : 'Hablar'}</span>
                   </button>
 
+                  {/* Image Upload Quick Attachment */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Adjuntar imagen o ejercicio para que Highfield lo vea"
+                    className="p-2 rounded-xs bg-[#0a0a14] hover:bg-[#151528] text-emerald-400/90 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/60 transition-all cursor-pointer"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Open Full Vision / Camera HUD */}
+                  {onOpenVisionScanner && (
+                    <button
+                      type="button"
+                      onClick={onOpenVisionScanner}
+                      title="Abrir Escáner Óptico / Cámara Lunar [OJO]"
+                      className="px-2 py-2 rounded-xs bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/50 hover:border-emerald-400 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                      <span className="hidden sm:inline text-[10px]">OJO</span>
+                    </button>
+                  )}
+
+                  {/* Open Cosmic Sketchpad Modal */}
+                  {onOpenSketchpad && (
+                    <button
+                      type="button"
+                      onClick={onOpenSketchpad}
+                      title="Abrir Taller de Bocetos y Pizarra Cósmica"
+                      className="px-2 py-2 rounded-xs bg-sky-950/60 hover:bg-sky-900/80 text-sky-300 border border-sky-500/50 hover:border-sky-400 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                    >
+                      <Palette className="w-3.5 h-3.5 text-sky-400" />
+                      <span className="hidden sm:inline text-[10px]">BOCETO</span>
+                    </button>
+                  )}
+
+                  {/* Web Radar Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsWebSearchActive(!isWebSearchActive);
+                      soundManager.playInteractChime();
+                    }}
+                    title={isWebSearchActive ? 'Radar Web activo: buscando datos actuales de la Tierra' : 'Activar Radar Web (Google Search Grounding)'}
+                    className={`p-2 rounded-xs border text-xs font-bold flex items-center transition-all cursor-pointer ${
+                      isWebSearchActive
+                        ? 'bg-sky-500/20 text-sky-300 border-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.4)]'
+                        : 'bg-[#0a0a14] hover:bg-[#151528] text-white/40 hover:text-sky-300 border-[#1a1a2e]'
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                  </button>
+
                   <input
                     type="text"
                     value={customInput}
                     onChange={(e) => setCustomInput(e.target.value)}
-                    placeholder="Escribe o pulsa 'Hablar' para que Highfield te escuche..."
-                    className="flex-1 bg-[#05050a] border border-[#1a1a2e] rounded-xs px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#ff4e00]"
+                    placeholder={
+                      attachedImage
+                        ? 'Pregunta algo sobre esta imagen...'
+                        : isWebSearchActive
+                        ? 'Pregunta noticias, lanzamientos o datos de la Tierra...'
+                        : "Escribe, pulsa 'Hablar', 'OJO' o 'BOCETO'..."
+                    }
+                    className="flex-1 min-w-[140px] bg-[#05050a] border border-[#1a1a2e] rounded-xs px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#ff4e00]"
                   />
 
                   <button
                     type="submit"
-                    disabled={!customInput.trim() || isAiLoading}
-                    className="bg-[#ff4e00]/90 hover:bg-[#ff4e00] disabled:opacity-30 text-white px-3.5 py-2 rounded-xs text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    disabled={(!customInput.trim() && !attachedImage) || isAiLoading}
+                    className="bg-[#ff4e00]/90 hover:bg-[#ff4e00] disabled:opacity-30 text-white px-3.5 py-2 rounded-xs text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">ENVIAR</span>
@@ -453,9 +720,11 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
             </div>
 
             {/* Bottom Status line */}
-            <div className="px-5 py-2 bg-[#050508] text-[9px] text-white/30 uppercase tracking-widest border-t border-[#141424] flex justify-between items-center">
-              <span>Sujeto: Highfield // Canal de Voz y Texto Activo</span>
-              <span className="text-[#ff4e00]/60">MICROPHONE: {voiceState.toUpperCase()}</span>
+            <div className="px-5 py-2 bg-[#050508] text-[9px] text-white/30 uppercase tracking-widest border-t border-[#141424] flex justify-between items-center flex-wrap gap-2">
+              <span>Sujeto: Highfield // Enlace Multimodal + Radar Web Activo</span>
+              <span className="text-[#ff4e00]/60">
+                MIC: {voiceState.toUpperCase()} {isHandsFreeActive && '• HANDS-FREE ON'}
+              </span>
             </div>
           </div>
         </motion.div>
@@ -463,3 +732,4 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({ isOpen, onClose }) => 
     </AnimatePresence>
   );
 };
+

@@ -75,6 +75,10 @@ export class BehaviorEngine {
   private interactionRadius: number = 44;
   private playerAcknowledgeCooldown: number = 0;
 
+  // 30-second user inactivity idle tracker
+  private timeSinceLastUserInteraction: number = 0;
+  private currentIdleRoutineIndex: number = 0;
+
   // Jump animation state
   private jumpStartX: number = 0;
   private jumpTargetX: number = 0;
@@ -121,7 +125,37 @@ export class BehaviorEngine {
     this.visitorPosition = pos;
   }
 
+  /**
+   * Resets the 30-second idle inactivity timer when the user touches/clicks the canvas,
+   * interacts via HUD, sends voice or messages.
+   */
+  public registerUserInteraction() {
+    this.timeSinceLastUserInteraction = 0;
+
+    // If currently in a deep idle state, smoothly transition back to aware state
+    const idleStates = [
+      HighfieldState.SCANNING_GROUND,
+      HighfieldState.ADJUSTING_SENSORS,
+      HighfieldState.CONTEMPLATING_DEEP,
+      HighfieldState.STRETCHING_BOOTS,
+      HighfieldState.CHECKING_WEB_SHOOTERS,
+    ];
+
+    if (idleStates.includes(this.status.state) && !this.status.isInteracting) {
+      this.status.state = HighfieldState.IDLE;
+      this.status.currentAction = 'Reactivando sistemas tras período de reposo';
+      this.status.emotion = 'curious';
+      this.stateTimer = 0;
+      this.nextDecisionDelay = 1500;
+    }
+  }
+
+  public getTimeSinceLastInteraction(): number {
+    return this.timeSinceLastUserInteraction;
+  }
+
   public startInteraction() {
+    this.registerUserInteraction();
     this.status.state = HighfieldState.INTERACTING;
     this.status.isInteracting = true;
     this.status.currentAction = 'Canal de radio cuántico abierto';
@@ -133,6 +167,7 @@ export class BehaviorEngine {
   }
 
   public endInteraction() {
+    this.registerUserInteraction();
     this.status.isInteracting = false;
     this.status.state = HighfieldState.IDLE;
     this.status.currentAction = 'Reanudando patrulla autónoma';
@@ -147,6 +182,7 @@ export class BehaviorEngine {
   }
 
   public triggerImmediateWalk(targetX?: number) {
+    this.registerUserInteraction();
     if (this.status.isInteracting) return;
 
     let destX: number;
@@ -172,6 +208,7 @@ export class BehaviorEngine {
   }
 
   public triggerWebJump() {
+    this.registerUserInteraction();
     if (this.status.isInteracting || this.status.state === HighfieldState.WEB_JUMP) return;
 
     this.jumpStartX = this.status.position.x;
@@ -187,6 +224,7 @@ export class BehaviorEngine {
   }
 
   public triggerWeaveWeb() {
+    this.registerUserInteraction();
     if (this.status.isInteracting) return;
     this.status.state = HighfieldState.WEAVING_WEB;
     this.status.currentAction = 'Desplegando Red Monumental de Filamentos (Pantalla de Cine Estelar)';
@@ -197,10 +235,85 @@ export class BehaviorEngine {
     this.triggerThought('¡Tejiendo la gran red cósmica! Atrapando la luz de las estrellas para el cine en el vacío.');
   }
 
+  /**
+   * Triggers a specialized random idle state when no user interaction has occurred for 30s.
+   */
+  private triggerRandomIdleRoutine() {
+    const idleRoutines = [
+      {
+        state: HighfieldState.SCANNING_GROUND,
+        action: 'Escaneando el regolito lunar (30s+ inactividad)',
+        emotion: 'focused' as const,
+        thoughts: [
+          'El espectrómetro óptico detecta silicio y rastros de helio-3 en el polvo.',
+          'Capas de regolito intactas desde hace millones de años...',
+          'El escáner de terreno no muestra anomalías térmicas en este sector.'
+        ]
+      },
+      {
+        state: HighfieldState.ADJUSTING_SENSORS,
+        action: 'Calibrando sensores ópticos y visor (30s+ inactividad)',
+        emotion: 'thoughtful' as const,
+        thoughts: [
+          'Reajustando sensibilidad polarimétrica del visor... La Tierra se ve nítida.',
+          'Sensores térmicos calibrados a -150°C. Telemetría lista.',
+          'Alineando antenas cuánticas para recepciones de radio lejanas.'
+        ]
+      },
+      {
+        state: HighfieldState.CONTEMPLATING_DEEP,
+        action: 'Contemplación profunda de la Tierra en el vacío (30s+ inactividad)',
+        emotion: 'wondrous' as const,
+        thoughts: [
+          '8 mil millones de almas en una pequeña mota azul... todas compartiendo el mismo cielo.',
+          'Desde este risco lunar, las fronteras terrestres son completamente invisibles.',
+          'El silencio absoluto del cosmos es el mejor espacio para pensar.'
+        ]
+      },
+      {
+        state: HighfieldState.STRETCHING_BOOTS,
+        action: 'Probando amortiguadores de las botas lunares en 1/6g (30s+ inactividad)',
+        emotion: 'curious' as const,
+        thoughts: [
+          'Amortiguadores al 100%. Listos para un salto de 40 metros.',
+          'La microgravedad es la mejor sensación para estas zapatillas rojas.',
+          'Probando elasticidad de suelas sobre roca basáltica.'
+        ]
+      },
+      {
+        state: HighfieldState.CHECKING_WEB_SHOOTERS,
+        action: 'Verificando dispensadores de filamento arácnido (30s+ inactividad)',
+        emotion: 'focused' as const,
+        thoughts: [
+          'Presión de polímero tensado óptima. Tensión estimada: 1400 MPa.',
+          'Filamentos listos para tejer o amortiguar caídas en baja gravedad.',
+          'Micro-boquillas limpias de polvo de regolito.'
+        ]
+      }
+    ];
+
+    // Pick a routine (either sequential or random avoiding immediate repeat)
+    this.currentIdleRoutineIndex = (this.currentIdleRoutineIndex + 1 + Math.floor(Math.random() * (idleRoutines.length - 1))) % idleRoutines.length;
+    const routine = idleRoutines[this.currentIdleRoutineIndex];
+
+    this.status.state = routine.state;
+    this.status.currentAction = routine.action;
+    this.status.emotion = routine.emotion;
+    this.status.targetPosition = null;
+    this.stateTimer = 0;
+    this.nextDecisionDelay = 5500 + Math.random() * 3000;
+
+    const thought = routine.thoughts[Math.floor(Math.random() * routine.thoughts.length)];
+    this.triggerThought(thought);
+  }
+
   public update(deltaMs: number, getTerrainHeight: (x: number) => number): { stepped: boolean; footprintPos?: { x: number; y: number } } {
     let stepped = false;
     let footprintPos: { x: number; y: number } | undefined = undefined;
     const deltaSec = deltaMs / 1000;
+
+    // Track user inactivity timer
+    this.timeSinceLastUserInteraction += deltaMs;
 
     // Update thought bubble timer
     if (this.status.thoughtTimer > 0) {
@@ -272,6 +385,16 @@ export class BehaviorEngine {
 
     this.stateTimer += deltaMs;
 
+    // Check if 30 seconds of user inactivity have passed and Highfield is in an eligible steady state
+    const isStationaryState =
+      this.status.state === HighfieldState.IDLE ||
+      this.status.state === HighfieldState.OBSERVING ||
+      this.status.state === HighfieldState.SITTING;
+
+    if (this.timeSinceLastUserInteraction >= 30000 && isStationaryState && this.stateTimer > 2500) {
+      this.triggerRandomIdleRoutine();
+    }
+
     // State machine
     switch (this.status.state) {
       case HighfieldState.PLAYER_DETECTED:
@@ -279,7 +402,12 @@ export class BehaviorEngine {
       case HighfieldState.OBSERVING:
       case HighfieldState.SITTING:
       case HighfieldState.INSPECTING:
-      case HighfieldState.WEAVING_WEB: {
+      case HighfieldState.WEAVING_WEB:
+      case HighfieldState.SCANNING_GROUND:
+      case HighfieldState.ADJUSTING_SENSORS:
+      case HighfieldState.CONTEMPLATING_DEEP:
+      case HighfieldState.STRETCHING_BOOTS:
+      case HighfieldState.CHECKING_WEB_SHOOTERS: {
         if (this.stateTimer > this.nextDecisionDelay) {
           this.decideNextAutonomousAction();
         }
@@ -350,6 +478,7 @@ export class BehaviorEngine {
       this.nextDecisionDelay = 4500 + Math.random() * 2000;
       this.triggerThought("El escáner detecta microcristales de sílice fundida.");
       memorySystem.unlockDiscovery({
+        id: 'mineral_quartz_regolith',
         name: 'Fragmento de Cuarzo Regolítico',
         category: 'mineral',
         description: 'Muestra analizada con escáner de alta frecuencia en el cráter oriental.',
@@ -365,6 +494,13 @@ export class BehaviorEngine {
 
   private decideNextAutonomousAction() {
     this.stateTimer = 0;
+
+    // If more than 30s of inactivity, high chance to trigger an idle routine
+    if (this.timeSinceLastUserInteraction >= 30000 && Math.random() < 0.65) {
+      this.triggerRandomIdleRoutine();
+      return;
+    }
+
     const roll = Math.random();
 
     // 15% chance of doing an acrobatic low gravity web jump

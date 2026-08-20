@@ -4,6 +4,8 @@
  * Earth beacon radio intercepts, relic discoveries, and pixel-art sound effects procedurally.
  */
 
+import { soundscapeEngine } from './AtmosphericSoundscapeEngine';
+
 class AudioEngine {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
@@ -26,6 +28,7 @@ class AudioEngine {
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioCtx();
       this.isInitialized = true;
+      soundscapeEngine.init(this.ctx);
       this.startCosmicAmbience();
     } catch {
       // Audio context might fail if not supported or blocked
@@ -38,11 +41,14 @@ class AudioEngine {
     }
     if (!this.isInitialized) {
       this.init();
+    } else {
+      soundscapeEngine.resume();
     }
   }
 
   public toggleMute(): boolean {
     this.isMuted = !this.isMuted;
+    soundscapeEngine.setMuted(this.isMuted);
     if (this.droneGain && this.ctx) {
       this.droneGain.gain.setValueAtTime(this.isMuted ? 0 : 0.08, this.ctx.currentTime);
     }

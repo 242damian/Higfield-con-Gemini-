@@ -23,6 +23,7 @@ export interface VoiceSettings {
   selectedVoiceURI: string | null;
   preset: VoicePreset;
   voiceEnabled: boolean;
+  handsFreeMode: boolean;
 }
 
 export interface VoiceListenerCallback {
@@ -38,6 +39,7 @@ export class VoiceEngine {
   private isListening: boolean = false;
   private speechSynth: SpeechSynthesis | null = null;
   private voiceEnabled: boolean = true;
+  private handsFreeMode: boolean = false;
   private callback: VoiceListenerCallback | null = null;
 
   private pitch: number = 1.02;
@@ -367,6 +369,15 @@ export class VoiceEngine {
     return this.voiceEnabled;
   }
 
+  public setHandsFreeMode(enabled: boolean) {
+    this.handsFreeMode = enabled;
+    this.saveConfig();
+  }
+
+  public isHandsFreeMode(): boolean {
+    return this.handsFreeMode;
+  }
+
   public getSettings(): VoiceSettings {
     return {
       pitch: this.pitch,
@@ -374,6 +385,7 @@ export class VoiceEngine {
       selectedVoiceURI: this.selectedVoiceURI,
       preset: this.preset,
       voiceEnabled: this.voiceEnabled,
+      handsFreeMode: this.handsFreeMode,
     };
   }
 }
